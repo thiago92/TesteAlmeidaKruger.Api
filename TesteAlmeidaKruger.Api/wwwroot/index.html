@@ -1,0 +1,250 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Weather Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+
+        h1 {
+            text-align: center;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th, td {
+            border: 1px solid #ccc;
+            padding: 8px;
+            text-align: center;
+        }
+
+        th {
+            background-color: #f0f0f0;
+        }
+
+        form, #filters, #stats {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        label {
+            display: flex;
+            flex-direction: column;
+            font-weight: bold;
+        }
+
+        input, button, select {
+            padding: 5px;
+            font-size: 14px;
+        }
+
+        #charts {
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+            margin-top: 20px;
+        }
+
+        canvas {
+            width: 100% !important;
+            height: 400px !important;
+        }
+
+        @media (max-width: 768px) {
+            canvas {
+                height: 300px !important; /* altura menor em telas pequenas */
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Weather Dashboard</h1>
+
+    <!-- Formulário para adicionar previsão -->
+    <form id="weatherForm">
+        <label>
+            Cidade
+            <select id="city" required>
+                <option value="São Paulo">São Paulo</option>
+                <option value="Rio de Janeiro">Rio de Janeiro</option>
+                <option value="Curitiba">Curitiba</option>
+                <option value="Brasília">Brasília</option>
+                <option value="Salvador">Salvador</option>
+                <!-- Você pode adicionar mais cidades -->
+            </select>
+        </label>
+        <label>
+            Temperatura (°C)
+            <input type="number" id="temperatureC" required>
+        </label>
+        <label>
+            Resumo
+            <input type="text" id="summary">
+        </label>
+        <button type="submit">Adicionar</button>
+    </form>
+
+    <!-- Filtros de data -->
+    <div id="filters">
+        <label>
+            Data Inicial
+            <input type="date" id="startDate">
+        </label>
+        <label>
+            Data Final
+            <input type="date" id="endDate">
+        </label>
+        <button id="filterBtn">Filtrar</button>
+    </div>
+
+    <!-- Estatísticas -->
+    <div id="stats">
+        <p>Temperatura Máxima: <span id="maxTemp">-</span> °C</p>
+        <p>Temperatura Mínima: <span id="minTemp">-</span> °C</p>
+        <p>Temperatura Média: <span id="avgTemp">-</span> °C</p>
+    </div>
+
+    <!-- Tabela de previsões -->
+    <table id="weatherTable">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Cidade</th>
+                <th>Data</th>
+                <th>Temperatura (°C)</th>
+                <th>Resumo</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <!-- Gráficos -->
+    <div id="charts">
+        <canvas id="tempChart"></canvas>
+        <canvas id="summaryChart"></canvas>
+    </div>
+
+    <script>
+        const apiBase = "/weather";
+        let tempChart = null;
+        let summaryChart = null;
+
+        async function loadWeather(start = null, end = null) {
+            const response = await fetch(apiBase);
+            let data = await response.json();
+
+            // Filtra pelo período
+            if (start && end) {
+                const startDate = new Date(start);
+                const endDate = new Date(end);
+                data = data.filter(item => {
+                    const d = new Date(item.date);
+                    return d >= startDate && d <= endDate;
+                });
+            }
+
+            // Atualiza tabela
+            const tbody = document.querySelector("#weatherTable tbody");
+            tbody.innerHTML = "";
+
+            const labels = [];
+            const temperatures = [];
+            const summaryCounter = {};
+
+            let maxTemp = -Infinity;
+            let minTemp = Infinity;
+            let sumTemp = 0;
+
+            data.forEach(item => {
+                const row = document.createElement("tr");
+                row.innerHTML = `
+                        <td>${item.id}</td>
+                        <td>${item.city}</td>
+                        <td>${new Date(item.date).toLocaleDateString()}</td>
+                        <td>${item.temperatureC}</td>
+                        <td>${item.summary || ""}</td>
+                    `;
+                tbody.appendChild(row);
+
+                // Estatísticas
+                const temp = item.temperatureC;
+                if (temp > maxTemp) maxTemp = temp;
+                if (temp < minTemp) minTemp = temp;
+                sumTemp += temp;
+
+                // Dados para gráfico
+                labels.push(item.city + " (" + new Date(item.date).toLocaleDateString() + ")");
+                temperatures.push(temp);
+
+                if (item.summary) {
+                    summaryCounter[item.summary] = (summaryCounter[item.summary] || 0) + 1;
+                }
+            });
+
+            const avgTemp = data.length > 0 ? (sumTemp / data.length).toFixed(1) : '-';
+            document.getElementById("maxTemp").textContent = isFinite(maxTemp) ? maxTemp : '-';
+            document.getElementById("minTemp").textContent = isFinite(minTemp) ? minTemp : '-';
+            document.getElementById("avgTemp").textContent = avgTemp;
+
+            updateCharts(labels, temperatures, summaryCounter);
+        }
+
+        function updateCharts(labels, temperatures, summaryCounter) {
+            // Gráfico de temperaturas
+            const tempCtx = document.getElementById('tempChart').getContext('2d');
+            if (tempChart) tempChart.destroy();
+            tempChart = new Chart(tempCtx, {
+                type: 'bar',
+                data: { labels, datasets: [{ label: 'Temperatura (°C)', data: temperatures, backgroundColor: 'rgba(54, 162, 235, 0.6)' }] },
+                options: { responsive: true, plugins: { legend: { display: false } } }
+            });
+
+            // Gráfico de resumo
+            const summaryCtx = document.getElementById('summaryChart').getContext('2d');
+            if (summaryChart) summaryChart.destroy();
+            summaryChart = new Chart(summaryCtx, {
+                type: 'pie',
+                data: { labels: Object.keys(summaryCounter), datasets: [{ label: 'Resumo', data: Object.values(summaryCounter), backgroundColor: ['rgba(255,99,132,0.6)', 'rgba(54,162,235,0.6)', 'rgba(255,206,86,0.6)', 'rgba(75,192,192,0.6)', 'rgba(153,102,255,0.6)'] }] },
+                options: { responsive: true }
+            });
+        }
+
+        // Eventos
+        document.getElementById("filterBtn").addEventListener("click", () => {
+            const start = document.getElementById("startDate").value;
+            const end = document.getElementById("endDate").value;
+            loadWeather(start, end);
+        });
+
+        document.getElementById("weatherForm").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const city = document.getElementById("city").value;
+            const temperatureC = parseInt(document.getElementById("temperatureC").value);
+            const summary = document.getElementById("summary").value;
+
+            await fetch(apiBase, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ city, temperatureC, summary, date: new Date() })
+            });
+
+            document.getElementById("weatherForm").reset();
+            loadWeather();
+        });
+
+        // Carrega dados iniciais
+        loadWeather();
+    </script>
+</body>
+</html>

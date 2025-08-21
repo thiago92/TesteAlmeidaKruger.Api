@@ -32,7 +32,7 @@ weatherApi.MapGet("/", async (AppDbContext db) =>
 weatherApi.MapGet("/{id}", async (int id, AppDbContext db) =>
     await db.WeatherForecasts.FindAsync(id) is WeatherForecast wf
         ? Results.Ok(wf)
-        : Results.NotFound());
+        : Results.NotFound()); 
 
 // POST - adiciona nova previsão
 weatherApi.MapPost("/", async (WeatherForecast wf, AppDbContext db) =>
